@@ -1,7 +1,6 @@
-name: Generate Simulation Video
+name: Advanced Simulation Generator
 
 on:
-  # This workflow can be triggered manually from the Actions tab
   workflow_dispatch:
     inputs:
       water:
@@ -26,18 +25,21 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
-          python-version: '3.9'
+          python-version: '3.8'
           
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install numpy matplotlib moviepy
+          pip install rdkit-pypi
+          pip install pyscf
           
       - name: Create assets directory
         run: mkdir -p assets
           
       - name: Run simulation
         run: |
+          echo "Running simulation with ${{ github.event.inputs.water }} water molecules and ${{ github.event.inputs.xenon }} xenon atoms"
           python scripts/process.py --water ${{ github.event.inputs.water }} --xenon ${{ github.event.inputs.xenon }} --output assets/simulation_w${{ github.event.inputs.water }}_x${{ github.event.inputs.xenon }}.mp4
           
       - name: Create default video if needed
@@ -46,11 +48,51 @@ jobs:
             cp assets/simulation_w${{ github.event.inputs.water }}_x${{ github.event.inputs.xenon }}.mp4 assets/default.mp4
           fi
           
-      - name: Commit and push new video
+      - name: Update videos.json
+        run: |
+          if [ ! -f assets/videos.json ]; then
+            echo '{"videos":[]}' > assets/videos.json
+          fi
+          
+          # Add the new video to the list
+          python - <<EOF
+          import json
+          
+          # Load current videos.json
+          with open('assets/videos.json', 'r') as f:
+              data = json.load(f)
+          
+          # Check if this video is already in the list
+          water = ${{ github.event.inputs.water }}
+          xenon = ${{ github.event.inputs.xenon }}
+          video_file = f"simulation_w{water}_x{xenon}.mp4"
+          
+          # Check if video already exists in the list
+          exists = False
+          for video in data["videos"]:
+              if video["water"] == water and video["xenon"] == xenon:
+                  exists = True
+                  break
+          
+          # Add the video if it doesn't exist
+          if not exists:
+              data["videos"].append({
+                  "water": water,
+                  "xenon": xenon,
+                  "file": video_file
+              })
+          
+          # Write the updated JSON back
+          with open('assets/videos.json', 'w') as f:
+              json.dump(data, f, indent=2)
+          EOF
+          
+      - name: Commit and push new files
         run: |
           git config --global user.name 'GitHub Actions Bot'
           git config --global user.email 'actions@github.com'
           git add assets/simulation_w${{ github.event.inputs.water }}_x${{ github.event.inputs.xenon }}.mp4
+          git add assets/videos.json
           if [ ! -f assets/default.mp4 ]; then
             git add assets/default.mp4
           fi
