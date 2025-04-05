@@ -14,6 +14,11 @@
       "water": 30,
       "xenon": 10,
       "file": "simulation_w30_x10.mp4"
+    },
+    {
+      "water": 140,
+      "xenon": 30,
+      "file": "simulation_w140_x30.mp4"
     }
   ]
 }
