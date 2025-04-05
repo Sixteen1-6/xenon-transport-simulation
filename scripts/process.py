@@ -201,7 +201,7 @@ def run_simulation(num_water=400, num_xenon=20, output_file='simulation.mp4'):
     # -----------------------------
     # Simulation Box & Membrane
     # -----------------------------
-    L = 40.0      # Box length in x,y,z (nm)
+    L = 4.0      # Box length in x,y,z (nm)
     membrane_x = L/2
     zn_spacing = 0.5
     zn_coords = []
@@ -220,7 +220,7 @@ def run_simulation(num_water=400, num_xenon=20, output_file='simulation.mp4'):
     N_XE = num_xenon
 
     dt = 0.001
-    nsteps = 500
+    nsteps = 10
     save_interval = 1
     thermo_interval = 500
     use_thermostat = True
