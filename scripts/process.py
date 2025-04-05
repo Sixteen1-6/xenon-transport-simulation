@@ -384,7 +384,7 @@ def run_simulation(num_water=400, num_xenon=20, output_file='simulation.mp4'):
         
         ax.scatter(pos[O_idx, 0], pos[O_idx, 1], pos[O_idx, 2], c='red', s=60*size_factor, label='O')
         ax.scatter(pos[H_idx, 0], pos[H_idx, 1], pos[H_idx, 2], c='blue', s=20*size_factor, label='H')
-        ax.scatter(pos[Xe_idx, 0], pos[Xe_idx, 1], pos[Xe_idx, 2], c='purple', s=80*size_factor, label='Xe')
+        ax.scatter(pos[Xe_idx, 0], pos[Xe_idx, 1], pos[Xe_idx, 2], c='green', s=80*size_factor, label='Xe')
         
         # For large systems, only plot a subset of the zinc atoms to improve performance
         if len(Zn_idx) > 1000:
