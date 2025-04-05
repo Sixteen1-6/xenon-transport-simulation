@@ -5,8 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Xenon Transport Simulation</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.0/es5/tex-mml-chtml.js"></script>
 </head>
 <body>
+    <script>
+        // Initialize MathJax
+        window.MathJax = {
+            tex: {
+                inlineMath: [['\\(', '\\)']],
+                displayMath: [['\\[', '\\]']],
+                processEscapes: true
+            }
+        };
+    </script>
+
     <header>
         <div class="container">
             <h1>Xenon Transport Simulation</h1>
@@ -68,7 +80,42 @@
                 <h2>About This Simulation</h2>
             </div>
             <div class="card-body">
-                <p>This simulation models the transport of xenon gas through a zinc membrane, surrounded by water molecules. The process is governed by several key physical chemistry principles.</p>
+                <p>This simulation models the transport of xenon gas through a zinc membrane, surrounded by water molecules. The process is governed by several key physical chemistry principles:</p>
+                
+                <div class="equation-box">
+                    <h4>Bond Energy in Water Molecules</h4>
+                    <p>The O-H bonds in water are modeled using a harmonic potential:</p>
+                    <p>\[ V_{bond}(r) = \frac{1}{2} k_{bond} (r - r_{eq})^2 \]</p>
+                    <p>Where \(k_{bond} = 50000\) kJ/(mol·nm²) and \(r_{eq} = 0.09572\) nm.</p>
+                </div>
+                
+                <div class="equation-box">
+                    <h4>H-O-H Angle in Water</h4>
+                    <p>The H-O-H angle is also modeled using a harmonic potential:</p>
+                    <p>\[ V_{angle}(\theta) = \frac{1}{2} k_{angle} (\theta - \theta_{eq})^2 \]</p>
+                    <p>Where \(k_{angle} = 500\) kJ/(mol·rad²) and \(\theta_{eq} = 104.52^{\circ}\) (1.8242 radians).</p>
+                </div>
+                
+                <div class="equation-box">
+                    <h4>Coulombic Interactions</h4>
+                    <p>Electrostatic interactions are calculated using Coulomb's law:</p>
+                    <p>\[ F_{coulomb} = k_e \frac{q_1 q_2}{r^2} \]</p>
+                    <p>Where \(k_e = 138.9355\) kJ·nm/mol and charges are \(q_O = -0.834 e\), \(q_H = 0.417 e\), and \(q_{Xe} = -1 e\).</p>
+                </div>
+                
+                <h3>Velocity Verlet Integration</h3>
+                <p>The simulation uses the Velocity Verlet algorithm to integrate the equations of motion:</p>
+                <div class="equation-box">
+                    <p>\[ \mathbf{r}(t + \Delta t) = \mathbf{r}(t) + \mathbf{v}(t) \Delta t + \frac{1}{2} \mathbf{a}(t) \Delta t^2 \]</p>
+                    <p>\[ \mathbf{v}(t + \Delta t) = \mathbf{v}(t) + \frac{1}{2}[\mathbf{a}(t) + \mathbf{a}(t + \Delta t)]\Delta t \]</p>
+                </div>
+                
+                <h3>Thermostat Control</h3>
+                <p>Temperature control is implemented using a velocity rescaling thermostat, which scales velocities to maintain the target temperature:</p>
+                <div class="equation-box">
+                    <p>\[ \lambda = \sqrt{\frac{T_{target}}{T_{current}}} \]</p>
+                    <p>\[ \mathbf{v}_i \rightarrow \lambda \mathbf{v}_i \]</p>
+                </div>
                 
                 <h3>Key Components:</h3>
                 <ul>
@@ -79,12 +126,55 @@
                 
                 <h3>Simulation Details:</h3>
                 <ul>
-                    <li>Simulation Box Size: 20 nm³</li>
+                    <li>Simulation Box Size: 40 nm³</li>
                     <li>Temperature: 300K</li>
                     <li>Integration Time Step: 0.001 ps</li>
                     <li>Bond Length (O-H): 0.09572 nm</li>
                     <li>Bond Angle (H-O-H): 104.52°</li>
+                    <li>Force constants derived from quantum chemistry calculations</li>
                 </ul>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h2>Physical Chemistry of Xenon Transport</h2>
+            </div>
+            <div class="card-body">
+                <h3>Transport Mechanism</h3>
+                <p>Xenon transport through the zinc membrane occurs via several mechanisms:</p>
+                
+                <div class="equation-box">
+                    <h4>Xenon Transport Rate</h4>
+                    <p>The rate of xenon transport through the membrane can be approximated using a modified Arrhenius equation:</p>
+                    <p>\[ \text{Rate} = A \cdot e^{-\frac{E_a}{RT}} \cdot C_{Xe} \cdot (1 - \theta) \]</p>
+                    <p>Where \(E_a\) is the activation energy, \(C_{Xe}\) is xenon concentration, and \(\theta\) is the fractional occupancy of membrane sites.</p>
+                </div>
+                
+                <h3>Quantum Chemistry Foundations</h3>
+                <p>The simulation parameters are derived from quantum chemistry calculations that provide:</p>
+                <ul>
+                    <li>Bond force constants from Hessian matrix eigenvalues</li>
+                    <li>Atomic charges from Mulliken population analysis</li>
+                    <li>Equilibrium geometries from energy minimization</li>
+                </ul>
+                
+                <p>These quantum-level calculations ensure accurate representation of molecular interactions and dynamics at the atomic scale.</p>
+                
+                <h3>Computational Methods</h3>
+                <p>The simulation combines several computational approaches:</p>
+                <ul>
+                    <li><strong>Molecular Dynamics:</strong> For time evolution of the system</li>
+                    <li><strong>Quantum Chemistry:</strong> For force field parameters</li>
+                    <li><strong>Statistical Mechanics:</strong> For temperature control and ensemble averaging</li>
+                </ul>
+                
+                <div class="equation-box">
+                    <h4>Energy Conservation</h4>
+                    <p>Total energy in the NVE ensemble should be conserved:</p>
+                    <p>\[ E_{total} = E_{kinetic} + E_{potential} = \text{constant} \]</p>
+                    <p>Small fluctuations may occur due to numerical integration and thermostat effects.</p>
+                </div>
             </div>
         </div>
     </div>
