@@ -33,7 +33,7 @@ def run_simulation(num_water=400, num_xenon=20, output_file='simulation.mp4'):
 
     dt = 0.001
     nsteps = 500
-    save_interval = 5  # Save every 5 steps to reduce file size
+    save_interval = 1  # Save every 5 steps to reduce file size
     thermo_interval = 100
     use_thermostat = True
     temp_target = 300
