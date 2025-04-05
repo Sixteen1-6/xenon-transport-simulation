@@ -14,7 +14,7 @@ def run_simulation(num_water=400, num_xenon=20, output_file='simulation.mp4'):
     # Simulation Box & Membrane
     # -----------------------------
     L = 40.0      # Box length in x,y,z (nm)
-    membrane_x = L/2
+    membrane_x = L/2  # position of the membrane in the file
     zn_spacing = 0.5
     zn_coords = []
     y_vals = np.arange(0, L+1e-9, zn_spacing)
@@ -23,7 +23,7 @@ def run_simulation(num_water=400, num_xenon=20, output_file='simulation.mp4'):
         for zz in z_vals:
             zn_coords.append([membrane_x, yy, zz])
     zn_coords = np.array(zn_coords)
-    N_ZN = len(zn_coords)
+    N_ZN = len(zn_coords) # the number of zn atoms
 
     # -----------------------------
     # Water & Force Field
@@ -48,7 +48,7 @@ def run_simulation(num_water=400, num_xenon=20, output_file='simulation.mp4'):
     angle_eq_deg = 104.52
     angle_eq = np.deg2rad(angle_eq_deg)
 
-    # Masses
+    # Masses Atomic in amu
     mass_O = 15.9994
     mass_H = 1.008
     mass_Xe = 70
@@ -58,7 +58,7 @@ def run_simulation(num_water=400, num_xenon=20, output_file='simulation.mp4'):
     # Allocate Arrays
     # -----------------------------
     N_mobile = N_WATER*3 + N_XE
-    N = N_mobile + N_ZN
+    N = N_mobile + N_ZN # total number of particles
 
     positions = np.zeros((N, 3))
     velocities = np.zeros((N, 3))
@@ -80,7 +80,7 @@ def run_simulation(num_water=400, num_xenon=20, output_file='simulation.mp4'):
         ])
         return q / np.linalg.norm(q)
 
-    def quat_to_matrix(q):
+    def quat_to_matrix(q): # converts a unit quartien to a 3X3 rotaion matrix in x,y,z,w order
         x, y, z, w = q
         return np.array([
             [1-2*(y*y+z*z), 2*(x*y - z*w), 2*(x*z + y*w)],
@@ -107,11 +107,11 @@ def run_simulation(num_water=400, num_xenon=20, output_file='simulation.mp4'):
         iH1 = iO+1
         iH2 = iO+2
         r0 = bond_length_eq
-        # local coords
+        # Local geometry for water: H1 at [r0, 0, 0], H2 at [r0*cos(angle), r0*sin(angle), 0]
         H2x = r0*np.cos(angle_eq)
         H2y = r0*np.sin(angle_eq)
         Opos = cand
-        H1pos = cand + rot.dot([r0, 0.0, 0.0])
+        H1pos = cand + rot.dot([r0, 0.0, 0.0])         # Rotate local coords to random orientation, the
         H2pos = cand + rot.dot([H2x, H2y, 0.0])
         positions[iO] = Opos
         positions[iH1] = H1pos
