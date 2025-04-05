@@ -1,5 +1,4 @@
 name: Advanced Simulation Generator
-
 on:
   workflow_dispatch:
     inputs:
@@ -16,45 +15,31 @@ on:
         
 permissions:
   contents: write
-
 jobs:
   generate:
     runs-on: ubuntu-latest
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3  # Updated to v3
         
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4  # Updated to v4
         with:
-          python-version: '3.8'
+          python-version: '3.10'  # Updated to 3.10
           
-      - name: Install basic dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install numpy matplotlib moviepy
-      
-      - name: Install RDKit
-        run: pip install rdkit-pypi
-      
-      - name: Install PySCF dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libopenblas-dev libxc-dev cmake
-      
-      - name: Install PySCF
-        run: |
-          pip install pyscf
-          # Verify installation
-          python -c "import pyscf; print('PySCF version:', pyscf.__version__)"
           
       - name: Create assets directory
         run: mkdir -p assets
           
-      - name: Run simulation without quantum calculations
+      - name: Run simulation
         run: |
           echo "Running simulation with ${{ github.event.inputs.water }} water molecules and ${{ github.event.inputs.xenon }} xenon atoms"
+          # Make sure your script path is correct
           python scripts/process.py --water ${{ github.event.inputs.water }} --xenon ${{ github.event.inputs.xenon }} --output assets/simulation_w${{ github.event.inputs.water }}_x${{ github.event.inputs.xenon }}.mp4
           
       - name: Create default video if needed
@@ -72,17 +57,23 @@ jobs:
           # Add the new video to the list
           python - <<EOF
           import json
+          import os
           
+          # Check if the video was actually created
+          water = ${{ github.event.inputs.water }}
+          xenon = ${{ github.event.inputs.xenon }}
+          video_file = f"simulation_w{water}_x{xenon}.mp4"
+          video_path = os.path.join('assets', video_file)
+          
+          if not os.path.exists(video_path):
+              print(f"Warning: Video file {video_path} was not created!")
+              exit(1)
+              
           # Load current videos.json
           with open('assets/videos.json', 'r') as f:
               data = json.load(f)
           
           # Check if this video is already in the list
-          water = ${{ github.event.inputs.water }}
-          xenon = ${{ github.event.inputs.xenon }}
-          video_file = f"simulation_w{water}_x{xenon}.mp4"
-          
-          # Check if video already exists in the list
           exists = False
           for video in data["videos"]:
               if video["water"] == water and video["xenon"] == xenon:
@@ -96,11 +87,32 @@ jobs:
                   "xenon": xenon,
                   "file": video_file
               })
+              print(f"Added new video to videos.json: {video_file}")
+          else:
+              print(f"Video already exists in videos.json: {video_file}")
           
           # Write the updated JSON back
           with open('assets/videos.json', 'w') as f:
               json.dump(data, f, indent=2)
           EOF
+          
+      - name: Check file existence
+        run: |
+          ls -la assets/
+          if [ -f assets/simulation_w${{ github.event.inputs.water }}_x${{ github.event.inputs.xenon }}.mp4 ]; then
+            echo "Simulation video exists"
+          else
+            echo "Error: Simulation video does not exist!"
+            exit 1
+          fi
+          
+          if [ -f assets/videos.json ]; then
+            echo "videos.json exists"
+            cat assets/videos.json
+          else
+            echo "Error: videos.json does not exist!"
+            exit 1
+          fi
           
       - name: Commit and push new files
         run: |
@@ -111,5 +123,11 @@ jobs:
           if [ ! -f assets/default.mp4 ]; then
             git add assets/default.mp4
           fi
-          git commit -m "Add simulation video: water=${{ github.event.inputs.water }}, xenon=${{ github.event.inputs.xenon }}"
-          git push
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Add simulation video: water=${{ github.event.inputs.water }}, xenon=${{ github.event.inputs.xenon }}"
+            git push
+          fi
