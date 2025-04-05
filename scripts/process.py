@@ -2,206 +2,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import sys
-from math import acos, degrees
 import argparse
+from math import acos, degrees
 
-# Check for dependencies
-try:
-    from rdkit import Chem
-    from rdkit.Chem import AllChem
-except ImportError:
-    sys.stderr.write("RDKit is required for this script.\n")
-    sys.exit(1)
-
-try:
-    from pyscf import gto, scf
-    from pyscf.geomopt.berny_solver import optimize
-    from pyscf.hessian import thermo
-except ImportError:
-    sys.stderr.write("PySCF is required for this script.\n")
-    sys.exit(1)
-
-# Unit conversion constants
-BOHR_TO_ANG = 0.529177  # 1 Bohr in Angstrom
-HARTREE_TO_J = 4.359744e-18  # 1 Hartree in Joules
-BOHR_TO_M = 5.29177e-11     # 1 Bohr in meters
-# Conversion factor for force constants: Eh/Bohr^2 to mdyn/Å
-factor_N_per_m = HARTREE_TO_J / (BOHR_TO_M**2)       # Hartree/Bohr^2 to N/m
-factor_mdyn_per_A = factor_N_per_m * 0.01            # N/m to mdyn/Å (1 N/m = 0.01 mdyn/Å)
-
-def const(smiles):
-    # 1. SMILES to 3D geometry using RDKit
-    mol = Chem.MolFromSmiles(smiles)
-    if mol is None:
-        sys.stderr.write(f"Error: Failed to parse SMILES '{smiles}'.\n")
-        sys.exit(1)
-    # Add hydrogens and embed 3D coordinates
-    mol = Chem.AddHs(mol)
-    # Use ETKDG for better initial conformer generation
-    params = AllChem.ETKDG()
-    params.randomSeed = 1  # deterministic embedding for reproducibility
-    embed_status = AllChem.EmbedMolecule(mol, params)
-    if embed_status != 0:
-        # Retry embedding if initial attempt fails
-        embed_status = AllChem.EmbedMolecule(mol, AllChem.ETKDG())
-    if embed_status != 0:
-        sys.stderr.write("Error: RDKit embedding failed.\n")
-        sys.exit(1)
-    # Optimize geometry with MMFF to relieve bad contacts
-    AllChem.MMFFOptimizeMolecule(mol)
-
-    # Extract atomic coordinates and symbols from RDKit molecule
-    conf = mol.GetConformer()
-    rd_symbols = [atom.GetSymbol() for atom in mol.GetAtoms()]
-    rd_coords_ang = np.array([list(conf.GetAtomPosition(i)) for i in range(mol.GetNumAtoms())], dtype=float)
-
-    # 2. Setup PySCF molecule and run initial HF calculation
-    # Use the coordinates from RDKit (in Angstrom)
-    mol_pyscf = gto.Mole(atom=[(sym, tuple(coord)) for sym, coord in zip(rd_symbols, rd_coords_ang)],
-                         unit="Angstrom", basis="6-311++G(d,p)")
-    mol_pyscf.build()
-    mf = scf.RHF(mol_pyscf)
-    mf.conv_tol = 1e-9  # tighten convergence for accuracy
-    mf.verbose = 0      # suppress output
-    mf.kernel()         # run HF SCF
-
-    # 3. Geometry optimization
-    try:
-        mol_eq = optimize(mf, maxsteps=100)  # returns optimized Mole object
-    except Exception as e:
-        sys.stderr.write(f"Optimization failed: {e}\n")
-        sys.exit(1)
-    # Final HF on optimized geometry
-    mf_eq = scf.RHF(mol_eq).run(conv_tol=1e-9, verbose=0)
-
-    # 4. Compute Hessian (analytic second derivatives)
-    hessian = mf_eq.Hessian().kernel()
-
-    # 5. Vibrational frequency analysis
-    freq_info = thermo.harmonic_analysis(mol_eq, hessian, exclude_trans=True, exclude_rot=True, imaginary_freq=False)
-    freqs_cm = freq_info["freq_wavenumber"]
-    # Only take non-negative frequencies
-    freqs_cm = np.real(freqs_cm)
-    print("\nVibrational frequencies (cm^-1):")
-    print(", ".join(f"{f:.1f}" for f in freqs_cm if f > 1e-2) or "None")
-
-    # Convert optimized coordinates to convenient form
-    coords_bohr = mol_eq.atom_coords(unit="Bohr")  # atomic coordinates in Bohr
-    natm = mol_eq.natm
-
-    # Helper function to compute internal coordinate force constant from Hessian
-    def internal_force_constant(v_vec):
-        """Compute force constant k = v^T H v for a given internal coordinate displacement vector v (in Bohr)."""
-        k = 0.0
-        for i in range(natm):
-            for j in range(natm):
-                k += np.dot(v_vec[i], hessian[i, j].dot(v_vec[j]))
-        return k
-
-    # 6. Extract and print optimized bond lengths and bond angles
-    print("\nOptimized bond lengths:")
-    for bond in mol.GetBonds():
-        i = bond.GetBeginAtomIdx()
-        j = bond.GetEndAtomIdx()
-        dist = np.linalg.norm(coords_bohr[j] - coords_bohr[i]) * BOHR_TO_ANG
-        atom_i = mol.GetAtomWithIdx(i)
-        atom_j = mol.GetAtomWithIdx(j)
-        print(f"  Bond {atom_i.GetSymbol()}{i}-{atom_j.GetSymbol()}{j}: {dist:.3f} Å")
-
-    print("\nOptimized bond angles:")
-    angles_list = []
-    for atom in mol.GetAtoms():
-        idx_center = atom.GetIdx()
-        neighbors = [nbr.GetIdx() for nbr in atom.GetNeighbors()]
-        if len(neighbors) < 2:
-            continue
-        # Consider unique pairs of neighbors to form angles
-        for a in range(len(neighbors)):
-            for b in range(a+1, len(neighbors)):
-                i = neighbors[a]
-                k = neighbors[b]
-                # Angle i-center-k
-                vec1 = coords_bohr[i] - coords_bohr[idx_center]
-                vec2 = coords_bohr[k] - coords_bohr[idx_center]
-                # Compute angle in degrees
-                cos_angle = np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
-                # Numerical safety: clamp within [-1,1]
-                cos_angle = max(-1.0, min(1.0, cos_angle))
-                angle_deg = degrees(acos(cos_angle))
-                angles_list.append((i, idx_center, k, angle_deg))
-                atom_i = mol.GetAtomWithIdx(i)
-                atom_center = mol.GetAtomWithIdx(idx_center)
-                atom_k = mol.GetAtomWithIdx(k)
-                print(f"  Angle {atom_i.GetSymbol()}{i}-{atom_center.GetSymbol()}{idx_center}-{atom_k.GetSymbol()}{k}: {angle_deg:.1f}°")
-
-    # 7. Mulliken atomic charges
-    print("\nMulliken atomic charges:")
-    pop, charges = mf_eq.mulliken_pop()  # Mulliken population analysis
-    for idx, atom in enumerate(mol.GetAtoms()):
-        print(f"  {atom.GetSymbol()}{idx}: {charges[idx]: .3f}")
-
-    # 8. Force constants for bond stretching and angle bending
-    print("\nForce constants:")
-    # Bond stretching force constants
-    bond_force = 0
-    for bond in mol.GetBonds():
-        i = bond.GetBeginAtomIdx()
-        j = bond.GetEndAtomIdx()
-        # Unit vector along bond (in Bohr)
-        rij = coords_bohr[j] - coords_bohr[i]
-        r = np.linalg.norm(rij)
-        if r < 1e-8:
-            continue
-        u = rij / r
-        # Internal coordinate displacement vector for bond length change
-        v = np.zeros((natm, 3))
-        v[i] -= 0.5 * u
-        v[j] += 0.5 * u
-        k_au = internal_force_constant(v)      # in Hartree/Bohr^2
-        bond_force = k_au   # convert to mdyn/Å
-        atom_i = mol.GetAtomWithIdx(i)
-        atom_j = mol.GetAtomWithIdx(j)
-        print(f"  Bond {atom_i.GetSymbol()}{i}-{atom_j.GetSymbol()}{j} force constant: {bond_force *1556.90013 } kj/A^2")
-
-    # Angle bending force constants
-    angle_k = 0
-    for (i, j, k, angle_deg) in angles_list:
-        # Vectors from center (j) to neighbors i and k
-        v1 = coords_bohr[i] - coords_bohr[j]
-        v2 = coords_bohr[k] - coords_bohr[j]
-        if np.linalg.norm(v1) < 1e-8 or np.linalg.norm(v2) < 1e-8:
-            continue
-        # Unit normal to plane of v1 and v2
-        n = np.cross(v1, v2)
-        if np.linalg.norm(n) < 1e-8:
-            # For linear or nearly linear angles
-            arbitrary_axis = np.array([1.0, 0.0, 0.0])
-            if abs(np.dot(v1/np.linalg.norm(v1), arbitrary_axis)) > 0.9:
-                arbitrary_axis = np.array([0.0, 1.0, 0.0])
-            n = np.cross(v1, arbitrary_axis)
-        n_unit = n / np.linalg.norm(n)
-        # Compute displacements
-        disp_i = 0.5 * np.cross(n_unit, v1)
-        disp_k = 0.5 * np.cross(n_unit, v2)
-        v = np.zeros((natm, 3))
-        v[i] += disp_i
-        v[k] += disp_k
-        k_au = internal_force_constant(v)
-        k_mdynA = k_au
-        angle_k = k_mdynA
-        atom_i = mol.GetAtomWithIdx(i)
-        atom_j = mol.GetAtomWithIdx(j)
-        atom_k = mol.GetAtomWithIdx(k)
-        print(f"  Angle {atom_i.GetSymbol()}{i}-{atom_j.GetSymbol()}{j}-{atom_k.GetSymbol()}{k} force constant: {k_mdynA*1556.90013 } kj/A^2")
-
-    return k_mdynA*1556.90013, bond_force*1556.90013, charges
-
+# -----------------------------
+# Simulation Parameters
+# -----------------------------
 def run_simulation(num_water=400, num_xenon=20, output_file='simulation.mp4'):
     """Run the molecular dynamics simulation with the specified parameters"""
     # -----------------------------
     # Simulation Box & Membrane
     # -----------------------------
-    L = 4.0      # Box length in x,y,z (nm)
+    L = 40.0      # Box length in x,y,z (nm)
     membrane_x = L/2
     zn_spacing = 0.5
     zn_coords = []
@@ -220,17 +32,13 @@ def run_simulation(num_water=400, num_xenon=20, output_file='simulation.mp4'):
     N_XE = num_xenon
 
     dt = 0.001
-    nsteps = 10
-    save_interval = 1
-    thermo_interval = 500
+    nsteps = 500
+    save_interval = 5  # Save every 5 steps to reduce file size
+    thermo_interval = 100
     use_thermostat = True
     temp_target = 300
 
-    # For production use, we would run the const() function
-    # However, for GitHub Actions we'll use pre-computed values
-    # angle_k, bond_k, charges = const("O")
-    
-    # Use these pre-computed values instead to avoid running quantum calculations
+    # Use these pre-computed values instead of running quantum calculations
     angle_k = 106.04721091  # kj/A^2
     bond_k = 484.34881621   # kj/A^2
     q_O, q_H = -0.834, 0.417  # charges
@@ -507,6 +315,10 @@ def run_simulation(num_water=400, num_xenon=20, output_file='simulation.mp4'):
 
     print(f"Starting simulation with {N_WATER} water molecules and {N_XE} xenon atoms...")
     
+    # Reduce number of steps based on system size for performance
+    if N_WATER > 500 or N_XE > 50:
+        nsteps = min(nsteps, 300)  # Fewer steps for large systems
+    
     for step in range(nsteps):
         if step % 50 == 0:
             print(f"Step {step}/{nsteps}")
@@ -514,7 +326,6 @@ def run_simulation(num_water=400, num_xenon=20, output_file='simulation.mp4'):
         for i in range(N_mobile):
             velocities[i] += 0.5*dt*(forces[i]/masses[i])
         # position update
-        oldpos = positions.copy()
         for i in range(N_mobile):
             positions[i] += velocities[i]*dt
 
@@ -545,7 +356,7 @@ def run_simulation(num_water=400, num_xenon=20, output_file='simulation.mp4'):
             lam = np.sqrt(temp_target/T_now)
             velocities[:N_mobile] *= lam
 
-        # store frames
+        # store frames (less frequently to reduce file size)
         if step % save_interval == 0:
             frames_positions.append(positions.copy())
 
@@ -568,29 +379,62 @@ def run_simulation(num_water=400, num_xenon=20, output_file='simulation.mp4'):
         ax.set_zlabel("Z (nm)")
         ax.set_title(f"Step {frame_idx*save_interval}")
 
-        # plot O, H, Xe, Zn
-        ax.scatter(pos[O_idx, 0], pos[O_idx, 1], pos[O_idx, 2], c='red', s=60, label='O')
-        ax.scatter(pos[H_idx, 0], pos[H_idx, 1], pos[H_idx, 2], c='blue', s=20, label='H')
-        ax.scatter(pos[Xe_idx, 0], pos[Xe_idx, 1], pos[Xe_idx, 2], c='purple', s=80, label='Xe')
-        ax.scatter(pos[Zn_idx, 0], pos[Zn_idx, 1], pos[Zn_idx, 2], c='grey', s=40, alpha=0.6, label='Zn')
+        # plot O, H, Xe, Zn - use smaller marker sizes for larger systems
+        size_factor = max(0.2, min(1.0, 200 / (N_WATER + N_XE)))
+        
+        ax.scatter(pos[O_idx, 0], pos[O_idx, 1], pos[O_idx, 2], c='red', s=60*size_factor, label='O')
+        ax.scatter(pos[H_idx, 0], pos[H_idx, 1], pos[H_idx, 2], c='blue', s=20*size_factor, label='H')
+        ax.scatter(pos[Xe_idx, 0], pos[Xe_idx, 1], pos[Xe_idx, 2], c='purple', s=80*size_factor, label='Xe')
+        
+        # For large systems, only plot a subset of the zinc atoms to improve performance
+        if len(Zn_idx) > 1000:
+            sample_size = min(1000, len(Zn_idx) // 4)
+            sample_indices = np.random.choice(Zn_idx, sample_size, replace=False)
+            ax.scatter(pos[sample_indices, 0], pos[sample_indices, 1], pos[sample_indices, 2], 
+                      c='grey', s=40*size_factor, alpha=0.6, label='Zn')
+        else:
+            ax.scatter(pos[Zn_idx, 0], pos[Zn_idx, 1], pos[Zn_idx, 2], 
+                      c='grey', s=40*size_factor, alpha=0.6, label='Zn')
 
-        # bond lines
-        for w in range(N_WATER):
+        # For large systems, only draw bonds for a subset of water molecules
+        max_bonds = 200
+        if N_WATER <= max_bonds:
+            water_range = range(N_WATER)
+        else:
+            # Sample water molecules near the membrane for bond drawing
+            water_indices = []
+            for w in range(N_WATER):
+                iO = 3*w
+                if positions[iO, 0] > L/3 and positions[iO, 0] < 2*L/3:
+                    water_indices.append(w)
+            if len(water_indices) > max_bonds:
+                water_indices = np.random.choice(water_indices, max_bonds, replace=False)
+            water_range = water_indices
+            
+        # Draw bonds for selected water molecules
+        for w in water_range:
             iO = 3*w
             iH1 = iO+1
             iH2 = iO+2
             xdata = [pos[iO, 0], pos[iH1, 0]]
             ydata = [pos[iO, 1], pos[iH1, 1]]
             zdata = [pos[iO, 2], pos[iH1, 2]]
-            ax.plot(xdata, ydata, zdata, 'k-', lw=1)
+            ax.plot(xdata, ydata, zdata, 'k-', lw=0.5)
             xdata = [pos[iO, 0], pos[iH2, 0]]
             ydata = [pos[iO, 1], pos[iH2, 1]]
             zdata = [pos[iO, 2], pos[iH2, 2]]
-            ax.plot(xdata, ydata, zdata, 'k-', lw=1)
+            ax.plot(xdata, ydata, zdata, 'k-', lw=0.5)
 
-        # Only add legend to the first frame to save time
+        # Only add legend to the first frame
         if frame_idx == 0:
             ax.legend()
+        
+        # Remove grid and tick labels to reduce visual clutter
+        ax.grid(False)
+        if frame_idx > 0:
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
+            ax.set_zticklabels([])
         
         fname = os.path.join(frames_dir, f"frame_{frame_idx:04d}.png")
         plt.savefig(fname, dpi=100)
@@ -613,26 +457,18 @@ def run_simulation(num_water=400, num_xenon=20, output_file='simulation.mp4'):
         print(f"Video saved as {output_file}")
     except ImportError:
         print("MoviePy not available. Frames saved in 'frames' directory.")
-
+    except Exception as e:
+        print(f"Error creating video: {e}")
+        print("Frames saved in 'frames' directory.")
+        
 if __name__ == "__main__":
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Generate Xenon Transport Simulation")
     parser.add_argument("--water", type=int, default=400, help="Number of water molecules")
     parser.add_argument("--xenon", type=int, default=20, help="Number of xenon atoms")
     parser.add_argument("--output", type=str, default="simulation.mp4", help="Output video file")
-    parser.add_argument("--test", action="store_true", help="Run quantum chemistry test calculation")
     
     args = parser.parse_args()
     
-    if args.test:
-        try:
-            # Test the quantum chemistry calculation with a small molecule
-            print("Testing quantum chemistry calculation...")
-            angle_k, bond_k, charges = const("O")
-            print(f"Test successful! angle_k={angle_k}, bond_k={bond_k}")
-        except Exception as e:
-            print(f"Quantum chemistry test failed: {e}")
-            sys.exit(1)
-    else:
-        # Run the simulation
-        run_simulation(args.water, args.xenon, args.output)
+    # Run the simulation
+    run_simulation(args.water, args.xenon, args.output)
