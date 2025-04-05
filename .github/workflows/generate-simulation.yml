@@ -27,17 +27,29 @@ jobs:
         with:
           python-version: '3.8'
           
-      - name: Install dependencies
+      - name: Install basic dependencies
         run: |
           python -m pip install --upgrade pip
           pip install numpy matplotlib moviepy
-          pip install rdkit-pypi
+      
+      - name: Install RDKit
+        run: pip install rdkit-pypi
+      
+      - name: Install PySCF dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libopenblas-dev libxc-dev cmake
+      
+      - name: Install PySCF
+        run: |
           pip install pyscf
+          # Verify installation
+          python -c "import pyscf; print('PySCF version:', pyscf.__version__)"
           
       - name: Create assets directory
         run: mkdir -p assets
           
-      - name: Run simulation
+      - name: Run simulation without quantum calculations
         run: |
           echo "Running simulation with ${{ github.event.inputs.water }} water molecules and ${{ github.event.inputs.xenon }} xenon atoms"
           python scripts/process.py --water ${{ github.event.inputs.water }} --xenon ${{ github.event.inputs.xenon }} --output assets/simulation_w${{ github.event.inputs.water }}_x${{ github.event.inputs.xenon }}.mp4
