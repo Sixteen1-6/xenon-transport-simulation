@@ -1,5 +1,14 @@
 {
   "videos": [
-    { "water": 400, "xenon": 20, "file": "default.mp4" }
+    {
+      "water": 400,
+      "xenon": 20,
+      "file": "default.mp4"
+    },
+    {
+      "water": 40,
+      "xenon": 2,
+      "file": "simulation_w40_x2.mp4"
+    }
   ]
 }
