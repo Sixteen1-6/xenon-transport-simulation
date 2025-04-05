@@ -1,0 +1,58 @@
+name: Generate Simulation Video
+
+on:
+  # This workflow can be triggered manually from the Actions tab
+  workflow_dispatch:
+    inputs:
+      water:
+        description: 'Number of water molecules'
+        required: true
+        default: '400'
+        type: number
+      xenon:
+        description: 'Number of xenon atoms'
+        required: true
+        default: '20'
+        type: number
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy matplotlib moviepy
+          
+      - name: Create assets directory
+        run: mkdir -p assets
+          
+      - name: Run simulation
+        run: |
+          python scripts/process.py --water ${{ github.event.inputs.water }} --xenon ${{ github.event.inputs.xenon }} --output assets/simulation_w${{ github.event.inputs.water }}_x${{ github.event.inputs.xenon }}.mp4
+          
+      - name: Create default video if needed
+        run: |
+          if [ ! -f assets/default.mp4 ]; then
+            cp assets/simulation_w${{ github.event.inputs.water }}_x${{ github.event.inputs.xenon }}.mp4 assets/default.mp4
+          fi
+          
+      - name: Commit and push new video
+        run: |
+          git config --global user.name 'GitHub Actions Bot'
+          git config --global user.email 'actions@github.com'
+          git add assets/simulation_w${{ github.event.inputs.water }}_x${{ github.event.inputs.xenon }}.mp4
+          if [ ! -f assets/default.mp4 ]; then
+            git add assets/default.mp4
+          fi
+          git commit -m "Add simulation video: water=${{ github.event.inputs.water }}, xenon=${{ github.event.inputs.xenon }}"
+          git push
