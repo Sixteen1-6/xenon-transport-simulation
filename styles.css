@@ -49,6 +49,13 @@ h3 {
     color: #0366d6;
 }
 
+h4 {
+    font-size: 1.2rem;
+    color: #17a2b8;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+}
+
 .lead {
     font-size: 1.2rem;
     font-weight: 300;
@@ -202,4 +209,48 @@ footer {
 .error {
     background-color: #f8d7da;
     color: #721c24;
+}
+
+.info {
+    background-color: #d1ecf1;
+    color: #0c5460;
+}
+
+/* New styles for equation boxes */
+.equation-box {
+    background-color: #f8f9fa;
+    border-left: 4px solid #0366d6;
+    padding: 1rem;
+    margin: 1rem 0;
+    overflow-x: auto;
+}
+
+.equation-box h4 {
+    margin-top: 0;
+    color: #0366d6;
+}
+
+/* Make equations slightly larger and centered */
+.equation-box .MathJax {
+    font-size: 110%;
+    margin: 0.5rem 0;
+}
+
+/* Additional styles for better responsive behavior */
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+    
+    h1 {
+        font-size: 2rem;
+    }
+    
+    h2 {
+        font-size: 1.5rem;
+    }
+    
+    .equation-box {
+        padding: 0.75rem;
+    }
 }
