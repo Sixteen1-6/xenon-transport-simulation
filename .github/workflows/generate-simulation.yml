@@ -13,6 +13,9 @@ on:
         required: true
         default: '20'
         type: number
+        
+permissions:
+  contents: write
 
 jobs:
   generate:
